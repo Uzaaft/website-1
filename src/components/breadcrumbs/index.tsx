@@ -21,7 +21,7 @@ export default function Breadcrumbs({
   return (
     <ul className={classNames(s.breadcrumbs, className)}>
       {breadcrumbs.map((breadcrumb, i) => (
-        <LI weight="regular" key={`${i}${breadcrumb.text}${breadcrumb.href}`}>
+        <LI weight="regular" key={breadcrumb.href ?? breadcrumb.text}>
           {breadcrumb.href ? (
             <Link
               className={classNames({

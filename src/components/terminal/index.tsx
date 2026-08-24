@@ -62,6 +62,7 @@ export default function Terminal({
   }, [lines?.length, autoScroll]);
 
   const padding = " ".repeat(whitespacePadding);
+  const lineOccurrences = new Map<string, number>();
   return (
     <div
       className={classNames(
@@ -98,10 +99,12 @@ export default function Terminal({
         })}
         onScroll={handleScroll}
       >
-        {lines?.map((line, i) => {
+        {lines?.map((line) => {
+          const occurrence = lineOccurrences.get(line) ?? 0;
+          lineOccurrences.set(line, occurrence + 1);
           return (
             <div
-              key={i + line}
+              key={`${line}:${occurrence}`}
               dangerouslySetInnerHTML={{
                 __html: `${padding}${line}${padding}`,
               }}

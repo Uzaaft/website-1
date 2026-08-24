@@ -1,6 +1,6 @@
 import { ButtonLink } from "@/components/link";
 import GenericCard from "@/components/generic-card";
-import { CodeXml, Github, Globe } from "lucide-react";
+import { CodeXml, GitBranch, Globe } from "lucide-react";
 import s from "./DownloadPage.module.css";
 
 export default function TipDownloadPage() {
@@ -15,7 +15,7 @@ export default function TipDownloadPage() {
             size="large"
             href="https://github.com/ghostty-org/ghostty/releases/tag/tip"
             text="GitHub"
-            icon={<Github strokeWidth={2} size={18} />}
+            icon={<GitBranch strokeWidth={2} size={18} />}
             showExternalIcon={true}
           />
           <ButtonLink
