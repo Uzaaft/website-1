@@ -1,5 +1,7 @@
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { DocsSearchEngine } from "./engine";
+import { SEARCH_QUERY_PARAM } from "./query-param";
 
 // useDocsSearchEngine exposes the lazily loaded search engine.
 // Call prepare to start loading, e.g. when the user hovers the search button.
@@ -39,6 +41,17 @@ export function useSearchShortcut(onToggle: () => void): void {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onToggle]);
+}
+
+// useSearchQueryParam calls onQuery with the `?q=` value whenever it is set or changes.
+// It reads search params, so the calling component must be inside <Suspense>.
+export function useSearchQueryParam(onQuery: (query: string) => void): void {
+  const query = useSearchParams().get(SEARCH_QUERY_PARAM);
+  useEffect(() => {
+    if (query) {
+      onQuery(query);
+    }
+  }, [query, onQuery]);
 }
 
 // useShortcutLabel returns the platform's label for the search shortcut.

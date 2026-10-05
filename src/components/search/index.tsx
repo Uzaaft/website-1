@@ -4,13 +4,22 @@ import classNames from "classnames";
 import { Search as SearchIcon } from "lucide-react";
 import NextLink from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { SearchResult } from "@/lib/search/engine";
 import {
   useDocsSearchEngine,
+  useSearchQueryParam,
   useSearchShortcut,
   useShortcutLabel,
 } from "@/lib/search/hooks";
+import { writeSearchQueryParam } from "@/lib/search/query-param";
 import { snippet, termsPattern } from "@/lib/search/snippet";
 import type { SearchSectionKind } from "@/lib/search/types";
 import s from "./Search.module.css";
@@ -48,7 +57,7 @@ export default function Search({ className }: SearchProps) {
 
   const results = useMemo(() => engine?.search(query) ?? [], [engine, query]);
 
-  // open shows the dialog and selects the previous query.
+  // open shows the dialog and selects any prefilled query.
   const open = useCallback(() => {
     prepare();
     if (dialogRef.current && !dialogRef.current.open) {
@@ -57,10 +66,20 @@ export default function Search({ className }: SearchProps) {
     }
   }, [prepare]);
 
-  // close hides the dialog.
-  const close = useCallback(() => {
-    dialogRef.current?.close();
+  // resetSearch clears the query from both the input and the URL. The
+  // component lives in the shared layout and survives navigation, so without
+  // this a closed search would keep its old query on every later page.
+  const resetSearch = useCallback(() => {
+    setQuery("");
+    writeSearchQueryParam("");
   }, []);
+
+  // close hides the dialog and resets the search. The URL is cleared before
+  // closing so that a navigation to a picked result starts from a clean entry.
+  const close = useCallback(() => {
+    resetSearch();
+    dialogRef.current?.close();
+  }, [resetSearch]);
 
   // toggle opens or closes the dialog from the keyboard shortcut.
   const toggle = useCallback(() => {
@@ -72,6 +91,20 @@ export default function Search({ className }: SearchProps) {
   }, [open, close]);
 
   useSearchShortcut(toggle);
+
+  // openWithQuery opens the dialog prefilled, e.g. from a `?q=` link.
+  // While the dialog is open, `?q=` changes come from our own typing being
+  // mirrored into the URL, so they are ignored to avoid a feedback loop.
+  const openWithQuery = useCallback(
+    (prefill: string) => {
+      if (dialogRef.current?.open) {
+        return;
+      }
+      setQuery(prefill);
+      open();
+    },
+    [open],
+  );
 
   // Reset the highlighted result whenever the results change.
   useEffect(() => {
@@ -85,9 +118,14 @@ export default function Search({ className }: SearchProps) {
       ?.scrollIntoView({ block: "nearest" });
   }, [activeIndex]);
 
-  // handleInputKeyDown implements arrow-key navigation and Enter to open.
+  // handleInputKeyDown implements arrow-key navigation, Enter to open, and
+  // Escape to close. Browsers otherwise use the first Escape in a search
+  // input to clear it, which would take two presses to close the dialog.
   function handleInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "ArrowDown") {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+    } else if (event.key === "ArrowDown") {
       event.preventDefault();
       setActiveIndex((i) => Math.min(i + 1, results.length - 1));
     } else if (event.key === "ArrowUp") {
@@ -95,8 +133,8 @@ export default function Search({ className }: SearchProps) {
       setActiveIndex((i) => Math.max(i - 1, 0));
     } else if (event.key === "Enter" && results[activeIndex]) {
       event.preventDefault();
-      router.push(results[activeIndex].id);
       close();
+      router.push(results[activeIndex].id);
     }
   }
 
@@ -109,6 +147,12 @@ export default function Search({ className }: SearchProps) {
 
   return (
     <>
+      {/* Search params are only known in the browser on static pages, so this
+          renders nothing during prerendering. */}
+      <Suspense fallback={null}>
+        <SearchQueryParam onQuery={openWithQuery} />
+      </Suspense>
+
       <button
         type="button"
         className={classNames(s.trigger, className)}
@@ -127,6 +171,8 @@ export default function Search({ className }: SearchProps) {
         ref={dialogRef}
         className={s.dialog}
         aria-label="Search docs"
+        // A safety net for closes that bypass close(), e.g. by the browser.
+        onClose={resetSearch}
         onClick={(event) => {
           if (event.target === dialogRef.current) {
             close();
@@ -142,7 +188,10 @@ export default function Search({ className }: SearchProps) {
               type="search"
               placeholder="Search docs, config options, actions…"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                writeSearchQueryParam(event.target.value);
+              }}
               onKeyDown={handleInputKeyDown}
               autoComplete="off"
               spellCheck={false}
@@ -172,6 +221,16 @@ export default function Search({ className }: SearchProps) {
   );
 }
 
+interface SearchQueryParamProps {
+  onQuery: (query: string) => void;
+}
+
+// SearchQueryParam opens search when the URL has a `?q=` query parameter.
+function SearchQueryParam({ onQuery }: SearchQueryParamProps) {
+  useSearchQueryParam(onQuery);
+  return null;
+}
+
 interface SearchResultItemProps {
   result: SearchResult;
   index: number;
@@ -195,7 +254,9 @@ function SearchResultItem({
       className={s.result}
       onMouseMove={() => onHover(index)}
     >
-      <NextLink href={result.id} onClick={onSelect}>
+      {/* Results change on every keystroke, so prefetching them would fetch
+          pages the user never opens. */}
+      <NextLink href={result.id} prefetch={false} onClick={onSelect}>
         <div className={s.resultHeader}>
           <span className={s.kind}>{KIND_LABELS[result.kind]}</span>
           <span
